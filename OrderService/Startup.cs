@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Plain.RabbitMQ;
 using RabbitMQ.Client;
 
@@ -29,13 +30,22 @@ namespace OrderService
                     Version = "v1"
                 });
             });
-
-            services.AddSingleton<IOrderDetailsProvider>(new OrderDetailsProvider(Configuration["ConnectionString"]));
+            var connectionString = Configuration["ConnectionString"];
+            services.AddSingleton<IOrderDetailsProvider>(new OrderDetailsProvider(connectionString));
+            services.AddSingleton<IOrderCreator>(x => new OrderCreator(connectionString, x.GetService<ILogger<OrderCreator>>()));
+            services.AddSingleton<IOrderDeletor>(new OrderDeletor(connectionString));
 
             services.AddSingleton<IConnectionProvider>(new ConnectionProvider("amqp://guest:guest@localhost:5672"));
-            services.AddScoped<IPublisher>(x => new Publisher(x.GetService<IConnectionProvider>(),
-                    "report_exchange",
+            services.AddSingleton<IPublisher>(x => new Publisher(x.GetService<IConnectionProvider>(),
+                    "order_exchange",
                     ExchangeType.Topic));
+            services.AddSingleton<ISubscriber>(x => new Subscriber(x.GetService<IConnectionProvider>(),
+                "inventory_exchange",
+                "inventory_response",
+                "inventory.response",
+                ExchangeType.Topic));
+
+            services.AddHostedService<InventoryResponseListener>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
